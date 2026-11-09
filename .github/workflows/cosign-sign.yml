@@ -1,4 +1,3 @@
-```yaml
 name: Keyless Artifact Signing with Cosign
 
 on:
@@ -52,4 +51,3 @@ jobs:
             release.tar.gz
             release.tar.gz.sigstore.json
             release.tar.gz.sha256
-```
