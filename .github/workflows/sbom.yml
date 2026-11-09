@@ -10,6 +10,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -17,8 +18,31 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
           upload-artifact: false
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+          upload-artifact: false
+
+      - name: Scan SBOM for Vulnerabilities
+        id: scan
+        uses: anchore/scan-action@v7
+        with:
+          sbom: sbom.cyclonedx.json
+          fail-build: false
+          severity-cutoff: high
+          output-format: json
+          output-file: vulnerability-report.json
+
       - name: Upload SBOM Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: project-sbom-reports
-          path: sbom.spdx.json
+          path: |
+            sbom.spdx.json
+            sbom.cyclonedx.json
+            vulnerability-report.json
