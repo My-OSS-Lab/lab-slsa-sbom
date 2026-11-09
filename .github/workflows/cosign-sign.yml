@@ -19,34 +19,59 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Package application
+      # 2. Package release artifact
       - name: Package Release Artifact
         run: |
+          set -euo pipefail
+
           tar -czvf release.tar.gz main.py requirements.txt
           sha256sum release.tar.gz > release.tar.gz.sha256
+
           echo "Artifact packaged successfully."
 
       # 3. Install Cosign
       - name: Install Sigstore Cosign
         uses: sigstore/cosign-installer@v4.1.2
 
-      # 4. Sign artifact using OIDC (Keyless)
+      # 4. Sign artifact using Keyless OIDC
       - name: Sign Artifact Keylessly
         run: |
+          set -euo pipefail
+
           cosign sign-blob \
             --bundle release.tar.gz.sigstore.json \
             --yes \
             release.tar.gz
 
-          echo "Keyless signing completed successfully."
+          # Extract Base64 signature
+          SIGNATURE=$(jq -er '.messageSignature.signature' \
+            release.tar.gz.sigstore.json)
 
-      # 5. Verify artifact signature
+          printf '%s\n' "$SIGNATURE" > release.tar.gz.sig
+
+          # Extract Base64-encoded DER certificate
+          CERTIFICATE=$(jq -er \
+            '.verificationMaterial.certificate.rawBytes // .verificationMaterial.x509CertificateChain.certificates[0].rawBytes' \
+            release.tar.gz.sigstore.json)
+
+          # Convert certificate into PEM format
+          {
+            echo "-----BEGIN CERTIFICATE-----"
+            printf '%s' "$CERTIFICATE" | fold -w 64
+            echo "-----END CERTIFICATE-----"
+          } > release.tar.gz.pem
+
+          echo "Signature and certificate extracted successfully."
+
+      # 5. Verify signed artifact
       - name: Verify Signed Artifact
         run: |
+          set -euo pipefail
+
           cosign verify-blob \
             --bundle release.tar.gz.sigstore.json \
             --certificate-identity \
-            "https://github.com/${{ github.repository }}/.github/workflows/cosign-sign.yml@refs/tags/${{ github.ref_name }}" \
+            "https://github.com/${{ github.repository }}/.github/workflows/cosign-sign.yml@${{ github.ref }}" \
             --certificate-oidc-issuer \
             "https://token.actions.githubusercontent.com" \
             release.tar.gz
@@ -60,7 +85,8 @@ jobs:
           name: release-signed-package
           path: |
             release.tar.gz
-            release.tar.gz.sigstore.json
+            release.tar.gz.sig
+            release.tar.gz.pem
             release.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
